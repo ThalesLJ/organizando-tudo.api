@@ -3,7 +3,7 @@ import { HydratedDocument } from 'mongoose';
 
 export type SecretDocument = HydratedDocument<Secret>;
 
-@Schema({ collection: 'Secrets', timestamps: true, versionKey: false })
+@Schema({ collection: 'Settings', timestamps: true, versionKey: false })
 export class Secret {
   @Prop({ required: true, unique: true, trim: true })
   key!: string;

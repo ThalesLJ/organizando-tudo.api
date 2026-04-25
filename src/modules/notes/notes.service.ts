@@ -36,6 +36,14 @@ export class NotesService {
     return this.toResponse(note);
   }
 
+  async findOnePublic(noteId: string): Promise<Record<string, unknown>> {
+    const note = await this.noteModel.findOne({ _id: noteId, isPublic: true });
+    if (!note) {
+      throw new NotFoundException('Note not found');
+    }
+    return this.toResponse(note);
+  }
+
   async update(userId: string, noteId: string, dto: UpdateNoteDto): Promise<Record<string, unknown>> {
     const note = await this.noteModel.findOne({ _id: noteId, userId: new Types.ObjectId(userId) });
     if (!note) {

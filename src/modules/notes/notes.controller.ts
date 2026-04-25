@@ -6,27 +6,35 @@ import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
 import { NotesService } from './notes.service';
 
-@UseGuards(JwtAuthGuard)
 @Controller('notes')
 export class NotesController {
   constructor(private readonly notesService: NotesService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateNoteDto): Promise<Record<string, unknown>> {
     return this.notesService.create(user.sub, dto);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   findAll(@CurrentUser() user: JwtPayload): Promise<Record<string, unknown>[]> {
     return this.notesService.findAll(user.sub);
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   findOne(@CurrentUser() user: JwtPayload, @Param('id') noteId: string): Promise<Record<string, unknown>> {
     return this.notesService.findOne(user.sub, noteId);
   }
 
+  @Get('public/:id')
+  findOnePublic(@Param('id') noteId: string): Promise<Record<string, unknown>> {
+    return this.notesService.findOnePublic(noteId);
+  }
+
   @Put(':id')
+  @UseGuards(JwtAuthGuard)
   update(
     @CurrentUser() user: JwtPayload,
     @Param('id') noteId: string,
@@ -36,6 +44,7 @@ export class NotesController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   remove(@CurrentUser() user: JwtPayload, @Param('id') noteId: string): Promise<{ success: boolean }> {
     return this.notesService.remove(user.sub, noteId);
   }
