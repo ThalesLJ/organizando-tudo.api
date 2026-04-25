@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { validateEnvironment } from './config/env.validation';
 import { AuthModule } from './modules/auth/auth.module';
+import { BudgetsModule } from './modules/budgets/budgets.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { UsersModule } from './modules/users/users.module';
@@ -23,6 +25,8 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     NotesModule,
+    BudgetsModule,
+    ExpensesModule,
   ],
 })
 export class AppModule {}
