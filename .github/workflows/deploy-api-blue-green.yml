@@ -35,5 +35,4 @@ jobs:
 
       - name: Deploy Blue Green API
         run: |
-          chmod +x "$API_DEPLOY_SCRIPT_PATH"
-          "$API_DEPLOY_SCRIPT_PATH" "$GITHUB_SHA" "$GITHUB_WORKSPACE"
+          bash "$API_DEPLOY_SCRIPT_PATH" "$GITHUB_SHA" "$GITHUB_WORKSPACE"
