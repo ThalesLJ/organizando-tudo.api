@@ -5,6 +5,7 @@ import { validateEnvironment } from './config/env.validation';
 import { AuthModule } from './modules/auth/auth.module';
 import { BudgetsModule } from './modules/budgets/budgets.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
+import { HealthModule } from './modules/health/health.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { UsersModule } from './modules/users/users.module';
@@ -27,6 +28,7 @@ import { UsersModule } from './modules/users/users.module';
     NotesModule,
     BudgetsModule,
     ExpensesModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
