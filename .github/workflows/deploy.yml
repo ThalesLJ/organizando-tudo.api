@@ -1,0 +1,111 @@
+name: Deploy API
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy-api:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEPLOY_BASE_DIR: ${{ vars.API_DEPLOY_BASE_DIR }}
+      API_ENV_FILE: ${{ vars.API_ENV_FILE }}
+      API_PM2_APP_NAME: ${{ vars.API_PM2_APP_NAME }}
+      API_HEALTHCHECK_PATH: /api/health
+      API_HEALTHCHECK_RETRIES: 30
+      API_HEALTHCHECK_SLEEP_SECONDS: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy API Single Version
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DEPLOY_BASE_DIR:-}" ]]; then
+            echo "API_DEPLOY_BASE_DIR is required"
+            exit 1
+          fi
+
+          if [[ -z "${API_ENV_FILE:-}" || ! -f "$API_ENV_FILE" ]]; then
+            echo "API_ENV_FILE is required and must exist"
+            exit 1
+          fi
+
+          if [[ -z "${API_PM2_APP_NAME:-}" ]]; then
+            echo "API_PM2_APP_NAME is required"
+            exit 1
+          fi
+
+          if ! command -v pm2 >/dev/null 2>&1; then
+            echo "pm2 is required on runner host"
+            exit 1
+          fi
+
+          deploy_dir="$DEPLOY_BASE_DIR/current"
+          logs_dir="$DEPLOY_BASE_DIR/logs"
+          log_file="$logs_dir/${API_PM2_APP_NAME}.log"
+
+          mkdir -p "$deploy_dir" "$logs_dir"
+
+          rsync -a --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            --exclude "dist" \
+            "$GITHUB_WORKSPACE/" "$deploy_dir/"
+
+          cp "$API_ENV_FILE" "$deploy_dir/.env"
+
+          api_port="$(awk -F= '/^PORT=/{print $2}' "$deploy_dir/.env" | tail -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+          if [[ -z "$api_port" ]]; then
+            echo "PORT is required in API_ENV_FILE"
+            exit 1
+          fi
+
+          pushd "$deploy_dir" >/dev/null
+          npm ci
+          npm run build
+          popd >/dev/null
+
+          pm2 delete "$API_PM2_APP_NAME" >/dev/null 2>&1 || true
+
+          pushd "$deploy_dir" >/dev/null
+          PORT="$api_port" pm2 start dist/main.js --name "$API_PM2_APP_NAME" --time --output "$log_file" --error "$log_file"
+          pm2 save
+          popd >/dev/null
+
+          if ! pm2 describe "$API_PM2_APP_NAME" >/dev/null 2>&1; then
+            echo "pm2 process was not started"
+            exit 1
+          fi
+
+          healthcheck_url="http://127.0.0.1:${api_port}${API_HEALTHCHECK_PATH}"
+          healthy="false"
+          for ((i = 1; i <= API_HEALTHCHECK_RETRIES; i++)); do
+            response="$(curl -fsS "$healthcheck_url" || true)"
+            if [[ "$response" == *'"status":"ok"'* ]]; then
+              healthy="true"
+              break
+            fi
+            sleep "$API_HEALTHCHECK_SLEEP_SECONDS"
+          done
+
+          if [[ "$healthy" != "true" ]]; then
+            pm2 logs "$API_PM2_APP_NAME" --lines 100 --nostream || true
+            echo "health check failed"
+            exit 1
+          fi
+
+          curl -fsS "$healthcheck_url" >/dev/null
+          echo "deploy finished on port $api_port"
