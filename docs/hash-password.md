@@ -1,138 +1,138 @@
-# Hash de Senhas de Usuários
+# User Password Hashing
 
-## Visão geral
+## Overview
 
-No projeto `organizandotudo.api`, as senhas de usuários nao sao criptografadas de forma reversivel. Elas sao protegidas com **hash bcrypt**, que e um processo propositalmente **irreversivel**.
+In `organizandotudo.api`, user passwords are not encrypted in a reversible way. They are protected using **bcrypt hashing**, which is intentionally **irreversible**.
 
-Isso significa:
+This means:
 
-- a API **nunca** guarda senha em texto puro;
-- a API **nunca** precisa decriptografar senha;
-- para autenticar, a API compara a senha digitada com o hash salvo.
+- the API **never** stores plain-text passwords;
+- the API **never** needs to decrypt passwords;
+- for authentication, the API compares the provided password with the stored hash.
 
-## Onde isso acontece no projeto
+## Where this happens in the project
 
-O fluxo de senha esta centralizado no servico `HashService`:
+The password flow is centralized in `HashService`:
 
-- `hash(value)` -> gera hash com `bcryptjs`
-- `verify(hash, plainValue)` -> valida senha digitada contra hash salvo
+- `hash(value)` -> generates a hash using `bcryptjs`
+- `verify(hash, plainValue)` -> validates the typed password against the stored hash
 
-Uso principal no modulo de autenticacao:
+Main usage in the authentication module:
 
-- `register` -> gera hash antes de salvar usuario
-- `login` -> compara senha informada com hash do banco
-- `verifyCode` (recuperacao de senha) -> gera novo hash e atualiza senha
+- `register` -> generates hash before saving user
+- `login` -> compares provided password with stored hash
+- `verifyCode` (password recovery) -> generates a new hash and updates password
 
-## Como o hash e gerado
+## How the hash is generated
 
-Na funcao `hash`, o projeto usa:
+In the `hash` function, the project uses:
 
-- biblioteca `bcryptjs`
-- custo computacional `saltRounds = 12`
+- `bcryptjs` library
+- computational cost `saltRounds = 12`
 
-Conceitualmente:
+Conceptually:
 
-1. Recebe a senha em texto puro (somente em memoria durante a requisicao).
-2. O bcrypt gera um salt interno e aplica varias rodadas de derivacao.
-3. Retorna uma string de hash (formato bcrypt) para persistencia no banco.
+1. It receives the password in plain text (in memory only during the request).
+2. bcrypt generates an internal salt and applies multiple derivation rounds.
+3. It returns a hash string (bcrypt format) for database persistence.
 
-Exemplo de formato de hash bcrypt:
+Example bcrypt hash format:
 
 `$2a$12$w6Q3...`
 
-Interpretacao basica:
+Basic interpretation:
 
-- `$2a$` -> variante do bcrypt
-- `12` -> fator de custo (salt rounds)
-- restante -> salt + hash codificados
+- `$2a$` -> bcrypt variant
+- `12` -> cost factor (salt rounds)
+- remaining part -> encoded salt + hash
 
-## Como a validacao funciona (sem decriptar)
+## How validation works (without decrypting)
 
-Na autenticacao (`login` e `validateUser`), o sistema:
+During authentication (`login` and `validateUser`), the system:
 
-1. Busca o usuario no banco.
-2. Recupera o hash armazenado em `user.password`.
-3. Executa `bcrypt.compare(senhaDigitada, hashSalvo)`.
-4. Se retornar `true`, a senha esta correta.
-5. Se retornar `false`, retorna credencial invalida.
+1. Finds the user in the database.
+2. Retrieves the hash stored in `user.password`.
+3. Executes `bcrypt.compare(typedPassword, storedHash)`.
+4. If it returns `true`, the password is correct.
+5. If it returns `false`, it returns invalid credentials.
 
-Ponto importante: o `compare` **nao decripta** o hash. Ele recalcula internamente e compara de forma segura.
+Important point: `compare` does **not decrypt** the hash. It recalculates internally and compares securely.
 
-## Fluxos completos no sistema
+## Full system flows
 
-### Cadastro de usuario
+### User registration
 
-1. Cliente envia `username`, `email`, `password`.
-2. API verifica se username/email ja existem.
-3. API gera hash com bcrypt (`hash`).
-4. API salva usuario com `password` ja em hash.
-5. API retorna token JWT.
+1. Client sends `username`, `email`, `password`.
+2. API checks whether username/email already exists.
+3. API generates bcrypt hash (`hash`).
+4. API saves user with `password` already hashed.
+5. API returns JWT token.
 
-### Login de usuario
+### User login
 
-1. Cliente envia `email` ou `username`, e `password`.
-2. API busca usuario por email ou username.
-3. API compara senha com `verify`.
-4. Se valido, gera JWT.
-5. Se invalido, retorna `Unauthorized`.
+1. Client sends `email` or `username`, and `password`.
+2. API finds user by email or username.
+3. API compares password with `verify`.
+4. If valid, it generates JWT.
+5. If invalid, it returns `Unauthorized`.
 
-### Redefinicao de senha
+### Password reset
 
-1. Usuario recebe codigo de verificacao por email.
-2. Informa codigo + nova senha.
-3. API valida codigo e usuario.
-4. API gera novo hash da nova senha.
-5. API atualiza `user.password` com o novo hash.
+1. User receives a verification code by email.
+2. User sends code + new password.
+3. API validates code and user.
+4. API generates a new hash for the new password.
+5. API updates `user.password` with the new hash.
 
-## "Criptografar" vs "Hash" no contexto de senha
+## "Encryption" vs "Hashing" in the password context
 
-Para senha de usuario, o correto e usar **hash**, nao criptografia reversivel.
+For user passwords, the correct approach is **hashing**, not reversible encryption.
 
-- **Hash (bcrypt)**:
-  - irreversivel
-  - ideal para senha
-  - validacao por comparacao (`compare`)
+- **Hashing (bcrypt)**:
+  - irreversible
+  - ideal for passwords
+  - comparison-based validation (`compare`)
 
-- **Criptografia reversivel**:
-  - possui encrypt/decrypt
-  - usada quando e necessario recuperar dado original
-  - nao e recomendada para armazenamento de senha
+- **Reversible encryption**:
+  - has encrypt/decrypt
+  - used when recovering original data is required
+  - not recommended for password storage
 
-## Sobre "decriptografar senha"
+## About "decrypting a password"
 
-Tecnicamente, em boas praticas de seguranca:
+Technically, following security best practices:
 
-- senha com bcrypt **nao pode ser decriptografada**;
-- se houver necessidade de recuperar "texto original", entao nao e hash de senha, e outro tipo de dado com criptografia reversivel.
+- bcrypt password hashes **cannot be decrypted**;
+- if there is a need to recover original text, then it is not password hashing, but another type of data using reversible encryption.
 
-No projeto atual, isso ja esta correto:
+In the current project, this is already correct:
 
-- senha usa hash bcrypt (irreversivel);
-- dados sensiveis de notas usam metodos de criptografia reversivel (`encrypt` e `decrypt`).
+- passwords use bcrypt hashing (irreversible);
+- sensitive note data uses reversible encryption methods (`encrypt` and `decrypt`).
 
-## Vantagens de seguranca desta abordagem
+## Security advantages of this approach
 
-- reduz impacto de vazamento de banco (nao expoe senha original diretamente);
-- custo de quebra e elevado por causa de `saltRounds = 12`;
-- evita dependencia de chave para "decriptar senha";
-- separa corretamente os conceitos: senha com hash e dados de negocio com criptografia.
+- reduces database leak impact (does not directly expose original passwords);
+- cracking cost is high because of `saltRounds = 12`;
+- avoids dependency on a key to "decrypt passwords";
+- clearly separates concepts: password hashing vs business data encryption.
 
-## Limites e pontos de atencao
+## Limits and attention points
 
-- hash nao impede senha fraca; politica de senha forte continua necessaria;
-- fator de custo deve ser reavaliado periodicamente conforme hardware evolui;
-- limite de tentativas e monitoramento de login ajudam contra brute force online;
-- logs nao devem registrar senha em texto puro.
+- hashing does not prevent weak passwords; strong password policy is still required;
+- cost factor should be periodically re-evaluated as hardware evolves;
+- login attempt limits and monitoring help against online brute force;
+- logs must not store plain-text passwords.
 
-## Resumo tecnico final
+## Final technical summary
 
-- Neste sistema, senha de usuario:
-  - entra em texto puro apenas durante a requisicao;
-  - e transformada em hash bcrypt antes de persistir;
-  - nunca e decriptada;
-  - e validada via `bcrypt.compare`.
+- In this system, a user password:
+  - is plain text only during the request;
+  - is converted to bcrypt hash before persistence;
+  - is never decrypted;
+  - is validated through `bcrypt.compare`.
 
-- Portanto:
-  - existe processo de "proteger senha" (hash);
-  - nao existe processo de "decriptografar senha";
-  - existe criptografia reversivel apenas para outros dados da aplicacao.
+- Therefore:
+  - there is a process to "protect password" (hashing);
+  - there is no process to "decrypt password";
+  - reversible encryption exists only for other application data.

@@ -1,14 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class NoteEncryptionService {
+  private readonly logger = new Logger(NoteEncryptionService.name);
   private readonly algorithm = 'aes-256-gcm';
   private static readonly AAD = Buffer.from('additional-data', 'utf8');
   private static readonly SALT = 'salt';
   private static readonly KEY_LENGTH = 32;
   private static readonly IV_LENGTH = 16;
+  private static readonly AUTH_TAG_LENGTH = 16;
 
   constructor(private readonly configService: ConfigService) {
     this.getKey();
@@ -29,7 +31,7 @@ export class NoteEncryptionService {
     }
   }
 
-  decrypt(encryptedText: string): string {
+  decrypt(encryptedText: string, context?: { noteId?: string; field?: string }): string {
     try {
       const [ivPart, authTagPart, payloadPart] = encryptedText.split(':');
       if (!ivPart || !authTagPart || !payloadPart) {
@@ -41,6 +43,9 @@ export class NoteEncryptionService {
         throw new Error('Invalid encrypted note format');
       }
       const authTag = Buffer.from(authTagPart, 'hex');
+      if (authTag.length !== NoteEncryptionService.AUTH_TAG_LENGTH) {
+        throw new Error('Invalid encrypted note auth tag');
+      }
 
       const key = this.getKey();
       const decipher = this.createLegacyDecipher(key);
@@ -49,7 +54,11 @@ export class NoteEncryptionService {
       let decrypted = decipher.update(payloadPart, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
       return decrypted;
-    } catch {
+    } catch (error) {
+      const diagnostics = this.getEncryptedTextDiagnostics(encryptedText);
+      const target = `noteId=${context?.noteId ?? 'unknown'} field=${context?.field ?? 'unknown'}`;
+      const reason = error instanceof Error ? error.message : 'unknown';
+      this.logger.error(`Failed to decrypt note field (${target}) reason=${reason} diagnostics=${diagnostics}`);
       throw new Error('Data decryption failed');
     }
   }
@@ -74,5 +83,27 @@ export class NoteEncryptionService {
       this.algorithm,
       key,
     );
+  }
+
+  private getEncryptedTextDiagnostics(value: string): string {
+    const parts = value.split(':');
+    const ivPart = parts[0] ?? '';
+    const authTagPart = parts[1] ?? '';
+    const payloadPart = parts[2] ?? '';
+
+    return JSON.stringify({
+      partsCount: parts.length,
+      ivLength: ivPart.length,
+      authTagLength: authTagPart.length,
+      payloadLength: payloadPart.length,
+      ivIsHex: this.isHex(ivPart),
+      authTagIsHex: this.isHex(authTagPart),
+      payloadIsHex: this.isHex(payloadPart),
+      hasUppercaseHex: /[A-F]/.test(value),
+    });
+  }
+
+  private isHex(value: string): boolean {
+    return value.length > 0 && value.length % 2 === 0 && /^[0-9a-f]+$/i.test(value);
   }
 }

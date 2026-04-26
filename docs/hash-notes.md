@@ -1,171 +1,172 @@
-# Criptografia e Decriptografia das Notas
+# Notes Encryption and Decryption
 
-## Visao geral
+## Overview
 
-No `organizandotudo.api`, os campos de texto das notas (`title` e `content`) sao protegidos com criptografia reversivel.
+In `organizandotudo.api`, note text fields (`title` and `content`) are protected with reversible encryption.
 
-Isso significa:
+This means:
 
-- ao salvar no banco, o texto e criptografado;
-- ao retornar na API, o texto e decriptografado;
-- diferente de senha, aqui o sistema precisa recuperar o valor original.
+- when saving to the database, the text is encrypted;
+- when returning through the API, the text is decrypted;
+- unlike passwords, here the system needs to recover the original value.
 
-## Onde isso acontece no projeto
+## Where this happens in the project
 
-A logica esta dividida entre dois pontos:
+The logic is split across two points:
 
 - `src/modules/common/services/encryption.service.ts`
   - `encryptData(data: string): string`
   - `decryptData(encryptedData: string): string`
-  - aliases usados no projeto: `encrypt()` e `decrypt()`
+  - aliases used in the project: `encrypt()` and `decrypt()`
 
 - `src/modules/notes/notes.service.ts`
-  - chama `encrypt()` antes de persistir `title` e `content`;
-  - chama `decrypt()` antes de responder ao cliente.
+  - calls `encrypt()` before persisting `title` and `content`;
+  - calls `decrypt()` before responding to the client.
 
-## Algoritmo e parametros usados
+## Algorithm and parameters used
 
-No `EncryptionService`, os principais parametros sao:
+In `EncryptionService`, the main parameters are:
 
-- algoritmo: `aes-256-gcm`
-- tamanho da chave derivada: `32` bytes
-- tamanho do IV: `16` bytes
-- tamanho esperado da tag: `16` bytes
+- algorithm: `aes-256-gcm`
+- derived key length: `32` bytes
+- IV length: `16` bytes
+- expected tag length: `16` bytes
 
-A chave nao vem pronta do `.env`. Ela e derivada em tempo de execucao:
+The key is not directly loaded from `.env`. It is derived at runtime:
 
-1. le `ENCRYPTION_KEY` da configuracao;
-2. executa `crypto.scryptSync(secret, 'salt', 32)`;
-3. usa o buffer resultante como chave simetrica.
+1. reads `ENCRYPTION_KEY` from configuration;
+2. executes `crypto.scryptSync(secret, 'salt', 32)`;
+3. uses the resulting buffer as the symmetric key.
 
-Se `ENCRYPTION_KEY` nao existir, o servico gera erro: `ENCRYPTION_KEY not configured`.
+If `ENCRYPTION_KEY` is missing, the service throws: `ENCRYPTION_KEY not configured`.
 
-## Logica de criptografia das notas
+## Notes encryption logic
 
-Quando uma nota e criada ou atualizada, os campos textuais passam por `encrypt()`.
+When a note is created or updated, text fields are processed by `encrypt()`.
 
-Fluxo interno do `encryptData`:
+Internal `encryptData` flow:
 
-1. Deriva a chave via `getKey()`.
-2. Gera um IV aleatorio com `crypto.randomBytes(16)`.
-3. Cria o cipher com `crypto.createCipher('aes-256-gcm', key)`.
-4. Define AAD fixa: `additional-data`.
-5. Criptografa o texto (`utf8` -> `hex`).
-6. Coleta auth tag com `getAuthTag()`.
-7. Retorna string no formato: `ivHex:tagHex:encryptedHex`.
+1. Derives the key through `getKey()`.
+2. Generates a random IV using `crypto.randomBytes(16)`.
+3. Creates the cipher with `crypto.createCipher('aes-256-gcm', key)`.
+4. Sets fixed AAD: `additional-data`.
+5. Encrypts the text (`utf8` -> `hex`).
+6. Collects auth tag with `getAuthTag()`.
+7. Returns string in format: `ivHex:tagHex:encryptedHex`.
 
-Formato persistido no MongoDB para `title` e `content`:
+Persisted format in MongoDB for `title` and `content`:
 
-`<iv_em_hex>:<tag_em_hex>:<conteudo_criptografado_em_hex>`
+`<iv_in_hex>:<tag_in_hex>:<encrypted_content_in_hex>`
 
-## Logica de decriptografia das notas
+## Notes decryption logic
 
-Sempre que a API precisa devolver dados de nota ao cliente, ela executa `decrypt()`.
+Whenever the API needs to return note data to the client, it runs `decrypt()`.
 
-Fluxo interno do `decryptData`:
+Internal `decryptData` flow:
 
-1. Divide a string salva por `:`.
-2. Valida que existem 3 partes.
-3. Reconstrui `iv` e `tag` a partir de hex.
-4. Deriva novamente a chave com `getKey()`.
-5. Cria decipher com `crypto.createDecipher('aes-256-gcm', key)`.
-6. Define a mesma AAD fixa: `additional-data`.
-7. Aplica `setAuthTag(tag)`.
-8. Decriptografa o payload (`hex` -> `utf8`).
-9. Retorna o texto original.
+1. Splits the stored string by `:`.
+2. Validates that there are 3 parts.
+3. Rebuilds `iv` and `tag` from hex.
+4. Derives the key again using `getKey()`.
+5. Creates decipher with `crypto.createDecipher('aes-256-gcm', key)`.
+6. Sets the same fixed AAD: `additional-data`.
+7. Applies `setAuthTag(tag)`.
+8. Decrypts payload (`hex` -> `utf8`).
+9. Returns original text.
 
-Se qualquer etapa falhar, o servico lanca: `Data decryption failed`.
+If any step fails, the service throws: `Data decryption failed`.
 
-## Ciclo completo da nota no sistema
+## Full note lifecycle in the system
 
-### Criacao
+### Creation
 
-Em `NotesService.create`:
+In `NotesService.create`:
 
-1. Recebe `title`, `content`, `isPublic`.
-2. Criptografa `title` e `content`.
-3. Persiste no banco somente valores criptografados.
-4. Retorna o documento salvo.
+1. Receives `title`, `content`, `isPublic`.
+2. Encrypts `title` and `content`.
+3. Persists only encrypted values in the database.
+4. Returns the saved document.
 
-### Listagem
+### Listing
 
-Em `NotesService.findAll`:
+In `NotesService.findAll`:
 
-1. Busca documentos no banco.
-2. Para cada nota, decriptografa `title` e `content`.
-3. Retorna resposta paginada com texto legivel ao cliente.
+1. Reads documents from the database.
+2. For each note, decrypts `title` and `content`.
+3. Returns paginated response with readable text to the client.
 
-### Busca por ID
+### Find by ID
 
-Em `NotesService.findOne`:
+In `NotesService.findOne`:
 
-1. Busca a nota do usuario.
-2. Decriptografa campos textuais.
-3. Retorna dados decriptografados.
+1. Finds the user's note.
+2. Decrypts text fields.
+3. Returns decrypted data.
 
-### Atualizacao
+### Update
 
-Em `NotesService.update`:
+In `NotesService.update`:
 
-1. Valida se a nota existe.
-2. Se `title` vier no payload, criptografa novamente.
-3. Se `content` vier no payload, criptografa novamente.
-4. Atualiza no banco.
-5. Decriptografa antes de montar resposta.
+1. Validates that the note exists.
+2. If `title` is present in payload, encrypts it again.
+3. If `content` is present in payload, encrypts it again.
+4. Updates in the database.
+5. Decrypts before building response.
 
-### Alternancia publico/privado
+### Public/private toggle
 
-Em `NotesService.togglePublic`:
+In `NotesService.togglePublic`:
 
-1. Atualiza apenas `isPublic`.
-2. Mantem `title` e `content` como estao no banco.
-3. Decriptografa os campos textuais para a resposta.
+1. Updates only `isPublic`.
+2. Keeps `title` and `content` as stored in the database.
+3. Decrypts text fields for the response.
 
-## Estrutura dos dados no banco
+## Data structure in the database
 
-Schema de nota (`src/modules/notes/schemas/note.schema.ts`):
+Note schema (`src/modules/notes/schemas/note.schema.ts`):
 
-- `title: string` -> valor criptografado em formato textual
-- `content: string` -> valor criptografado em formato textual
+- `title: string` -> encrypted value in textual format
+- `content: string` -> encrypted value in textual format
 - `isPublic: boolean`
 - `userId`
 - `deletedAt`, `createdAt`, `updatedAt`
 
-Mesmo sendo `string`, `title` e `content` nao ficam em texto puro no armazenamento.
+Even though they are `string`, `title` and `content` are not stored as plain text.
 
-## Relacao entre chave, leitura e consistencia
+## Relationship between key, read path, and consistency
 
-Para decriptografar corretamente, o sistema precisa manter consistencia em:
+To decrypt correctly, the system must keep consistency in:
 
-- mesma `ENCRYPTION_KEY`;
-- mesmo processo de derivacao de chave (`scryptSync` com o mesmo salt fixo);
-- mesma AAD (`additional-data`);
-- preservacao do formato `iv:tag:encrypted`.
+- same `ENCRYPTION_KEY`;
+- same key derivation process (`scryptSync` with the same fixed salt);
+- same AAD (`additional-data`);
+- preserved `iv:tag:encrypted` format.
 
-Qualquer alteracao nesses elementos pode impedir leitura de notas ja salvas.
+Any change in these elements can prevent reading already stored notes.
 
-## Comportamento em caso de erro
+## Behavior in case of error
 
-`EncryptionService` encapsula excecoes e retorna erros genericos:
+`EncryptionService` encapsulates exceptions and returns generic errors:
 
 - `Data encryption failed`
 - `Data decryption failed`
+- when decryption fails, the backend logs technical diagnostics (note id, field, part count, and hex format validation) to support investigation without exposing note content.
 
-Na pratica, isso cobre cenarios como:
+In practice, this covers scenarios such as:
 
-- payload fora do formato esperado;
-- chave inconsistente;
-- dados corrompidos;
-- falha no processo criptografico.
+- payload outside expected format;
+- inconsistent key;
+- corrupted data;
+- failure in the cryptographic process.
 
-## Diferenca para o fluxo de senha
+## Difference from password flow
 
-- Notas: criptografia reversivel (encrypt/decrypt), porque o sistema precisa mostrar o texto original.
-- Senhas: hash irreversivel (bcrypt), porque o sistema nao deve recuperar senha original.
+- Notes: reversible encryption (encrypt/decrypt), because the system needs to show original text.
+- Passwords: irreversible hash (bcrypt), because the system should not recover original password.
 
-## Resumo tecnico final
+## Final technical summary
 
-- Campos de nota sao criptografados no write path (`create` e `update`).
-- Campos de nota sao decriptografados no read path (`findAll`, `findOne`, `togglePublic`, resposta de `update`).
-- Persistencia usa formato textual composto por `iv`, `tag` e payload criptografado.
-- O processo depende diretamente de `ENCRYPTION_KEY` e da mesma configuracao criptografica durante todo o ciclo de vida dos dados.
+- Note fields are encrypted in the write path (`create` and `update`).
+- Note fields are decrypted in the read path (`findAll`, `findOne`, `togglePublic`, and `update` response).
+- Persistence uses textual format composed of `iv`, `tag`, and encrypted payload.
+- The process depends directly on `ENCRYPTION_KEY` and the same cryptographic configuration across the full data lifecycle.

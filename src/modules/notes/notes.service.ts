@@ -75,10 +75,11 @@ export class NotesService {
   }
 
   private toResponse(note: NoteDocument): Record<string, unknown> {
+    const noteId = String(note._id);
     return {
-      id: String(note._id),
-      title: this.noteEncryptionService.decrypt(note.title),
-      content: this.noteEncryptionService.decrypt(note.content),
+      id: noteId,
+      title: this.noteEncryptionService.decrypt(note.title, { noteId, field: 'title' }),
+      content: this.noteEncryptionService.decrypt(note.content, { noteId, field: 'content' }),
       isPublic: note.isPublic,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,

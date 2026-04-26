@@ -1,31 +1,31 @@
 # API Deploy Single Version
 
-## Objetivo
+## Goal
 
-Configurar deploy automatico da API no push para `master`, usando GitHub Actions com runner self-hosted Linux na VPS e PM2 para gerenciar uma unica versao ativa por vez.
+Configure automatic API deployment on push to `master`, using GitHub Actions with a self-hosted Linux runner on the VPS and PM2 to manage a single active version at a time.
 
-## Fluxo
+## Flow
 
-1. Runner recebe push da branch `master`.
-2. Workflow sincroniza o codigo para `current`.
-3. Workflow copia o `.env` da pasta compartilhada.
-4. Workflow instala dependencias e executa build.
-5. Workflow remove o processo anterior no PM2 pelo nome da aplicacao.
-6. Workflow identifica automaticamente o entrypoint compilado em `dist/main.js` ou `dist/src/main.js`.
-7. Workflow sobe a nova versao com PM2 na porta definida em `PORT` no `.env`.
-8. Um segundo job no GitHub (`ubuntu-latest`) valida externamente o endpoint `https://organizandotudo.api.thaleslj.com/api/health`.
+1. The runner receives a push to the `master` branch.
+2. The workflow syncs the code to `current`.
+3. The workflow copies `.env` from the shared path.
+4. The workflow installs dependencies and runs the build.
+5. The workflow removes the previous PM2 process by application name.
+6. The workflow automatically detects the compiled entrypoint in `dist/main.js` or `dist/src/main.js`.
+7. The workflow starts the new version with PM2 on the port defined by `PORT` in `.env`.
+8. A second GitHub job (`ubuntu-latest`) validates the public endpoint `https://organizandotudo.api.thaleslj.com/api/health`.
 
-## Arquivos
+## Files
 
 - Workflow: `.github/workflows/deploy.yml`
 
-## Health-check externo
+## External Health Check
 
-Endpoint validado pelo GitHub fora da VPS:
+Endpoint validated by GitHub outside the VPS:
 
 - `https://organizandotudo.api.thaleslj.com/api/health`
 
-Resposta esperada para deploy valido:
+Expected response for a valid deployment:
 
 ```json
 {
@@ -35,29 +35,29 @@ Resposta esperada para deploy valido:
 }
 ```
 
-## Variaveis obrigatorias no GitHub (Repository Variables)
+## Required GitHub Variables (Repository Variables)
 
 - `API_DEPLOY_BASE_DIR`
 - `API_ENV_FILE`
 - `API_PM2_APP_NAME`
 
-Valores recomendados para este projeto:
+Recommended values for this project:
 
 - `API_PM2_APP_NAME=organizandotudo-api`
 
-## Pre-requisitos na VPS
+## VPS Prerequisites
 
-- Runner self-hosted Linux ativo para o repositorio.
-- Node.js 22 instalado.
-- `pm2`, `rsync`, `curl`, `bash` instalados para o usuario `github-runner`.
-- Arquivo de ambiente da API existente no caminho definido em `API_ENV_FILE` com `PORT` definido.
-- Apache configurado para encaminhar trafego para a porta definida em `PORT` no `.env` da API.
-- Nao ha uso de `sudo` no workflow.
+- Self-hosted Linux runner active for the repository.
+- Node.js 22 installed.
+- `pm2`, `rsync`, `curl`, and `bash` installed for user `github-runner`.
+- API environment file available at the path defined by `API_ENV_FILE`, with `PORT` set.
+- Apache configured to proxy traffic to the port defined by `PORT` in the API `.env`.
+- No `sudo` usage in the workflow.
 
-## Estrutura de deploy na VPS (single version)
+## VPS Deploy Structure (Single Version)
 
-Diretorio base definido em `API_DEPLOY_BASE_DIR`:
+Base directory defined by `API_DEPLOY_BASE_DIR`:
 
 - `current/`
 - `logs/`
-- Nao ha backup de versoes anteriores nesse modelo.
+- No backup of previous versions in this model.
