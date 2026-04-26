@@ -20,7 +20,7 @@ export class NoteEncryptionService {
     try {
       const key = this.getKey();
       const iv = crypto.randomBytes(NoteEncryptionService.IV_LENGTH);
-      const cipher = this.createLegacyCipher(key);
+      const cipher = crypto.createCipheriv(this.algorithm, key, iv);
       cipher.setAAD(NoteEncryptionService.AAD);
       let encrypted = cipher.update(plainText, 'utf8', 'hex');
       encrypted += cipher.final('hex');
@@ -48,12 +48,19 @@ export class NoteEncryptionService {
       }
 
       const key = this.getKey();
-      const decipher = this.createLegacyDecipher(key);
-      decipher.setAAD(NoteEncryptionService.AAD);
-      decipher.setAuthTag(authTag);
-      let decrypted = decipher.update(payloadPart, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-      return decrypted;
+      try {
+        return this.decryptWithIv(key, iv, authTag, payloadPart);
+      } catch (modernError) {
+        try {
+          return this.decryptLegacyPasswordMode(key, authTag, payloadPart);
+        } catch (legacyError) {
+          const modernReason = modernError instanceof Error ? modernError.message : 'unknown';
+          const legacyReason = legacyError instanceof Error ? legacyError.message : 'unknown';
+          throw new Error(
+            `Unable to decrypt note in current or legacy mode (current=${modernReason}; legacy=${legacyReason})`,
+          );
+        }
+      }
     } catch (error) {
       const diagnostics = this.getEncryptedTextDiagnostics(encryptedText);
       const target = `noteId=${context?.noteId ?? 'unknown'} field=${context?.field ?? 'unknown'}`;
@@ -71,18 +78,52 @@ export class NoteEncryptionService {
     return crypto.scryptSync(secret, NoteEncryptionService.SALT, NoteEncryptionService.KEY_LENGTH);
   }
 
-  private createLegacyCipher(key: Buffer) {
-    return (crypto as unknown as { createCipher: (algorithm: string, password: Buffer) => any }).createCipher(
-      this.algorithm,
-      key,
-    );
+  private decryptWithIv(key: Buffer, iv: Buffer, authTag: Buffer, payload: string): string {
+    const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
+    decipher.setAAD(NoteEncryptionService.AAD);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(payload, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
   }
 
-  private createLegacyDecipher(key: Buffer) {
-    return (crypto as unknown as { createDecipher: (algorithm: string, password: Buffer) => any }).createDecipher(
-      this.algorithm,
-      key,
-    );
+  private decryptLegacyPasswordMode(key: Buffer, authTag: Buffer, payload: string): string {
+    const ivLengths = [12, 16];
+    let lastError: unknown = new Error('Legacy decrypt failed');
+
+    for (const legacyIvLength of ivLengths) {
+      try {
+        const material = this.evpBytesToKey(key, NoteEncryptionService.KEY_LENGTH, legacyIvLength);
+        const decipher = crypto.createDecipheriv(this.algorithm, material.key, material.iv);
+        decipher.setAAD(NoteEncryptionService.AAD);
+        decipher.setAuthTag(authTag);
+        let decrypted = decipher.update(payload, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Legacy decrypt failed');
+  }
+
+  private evpBytesToKey(password: Buffer, keyLength: number, ivLength: number): { key: Buffer; iv: Buffer } {
+    let accumulated = Buffer.alloc(0);
+    let previous = Buffer.alloc(0);
+
+    while (accumulated.length < keyLength + ivLength) {
+      const hash = crypto.createHash('md5');
+      hash.update(previous);
+      hash.update(password);
+      previous = hash.digest();
+      accumulated = Buffer.concat([accumulated, previous]);
+    }
+
+    return {
+      key: accumulated.subarray(0, keyLength),
+      iv: accumulated.subarray(keyLength, keyLength + ivLength),
+    };
   }
 
   private getEncryptedTextDiagnostics(value: string): string {
