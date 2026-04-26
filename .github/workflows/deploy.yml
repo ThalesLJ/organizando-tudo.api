@@ -16,9 +16,6 @@ jobs:
       DEPLOY_BASE_DIR: ${{ vars.API_DEPLOY_BASE_DIR }}
       API_ENV_FILE: ${{ vars.API_ENV_FILE }}
       API_PM2_APP_NAME: ${{ vars.API_PM2_APP_NAME }}
-      API_HEALTHCHECK_PATH: /api/health
-      API_HEALTHCHECK_RETRIES: 30
-      API_HEALTHCHECK_SLEEP_SECONDS: 2
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,22 +98,18 @@ jobs:
             exit 1
           fi
 
-          healthcheck_url="http://127.0.0.1:${api_port}${API_HEALTHCHECK_PATH}"
-          healthy="false"
-          for ((i = 1; i <= API_HEALTHCHECK_RETRIES; i++)); do
-            response="$(curl -fsS "$healthcheck_url" || true)"
-            if [[ "$response" == *'"status":"ok"'* ]]; then
-              healthy="true"
-              break
-            fi
-            sleep "$API_HEALTHCHECK_SLEEP_SECONDS"
-          done
+          echo "deploy finished on port $api_port"
 
-          if [[ "$healthy" != "true" ]]; then
-            pm2 logs "$API_PM2_APP_NAME" --lines 100 --nostream || true
-            echo "health check failed"
+  validate-api-public-health:
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    steps:
+      - name: Validate API public health endpoint
+        run: |
+          set -euo pipefail
+          health_url="https://organizandotudo.api.thaleslj.com/api/health"
+          response="$(curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$health_url")"
+          if [[ "$response" != *'"status":"ok"'* ]]; then
+            echo "Unexpected health response: $response"
             exit 1
           fi
-
-          curl -fsS "$healthcheck_url" >/dev/null
-          echo "deploy finished on port $api_port"
