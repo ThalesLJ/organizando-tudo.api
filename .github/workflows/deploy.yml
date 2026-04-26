@@ -78,10 +78,21 @@ jobs:
           npm run build
           popd >/dev/null
 
+          entrypoint="dist/main.js"
+          if [[ ! -f "$deploy_dir/$entrypoint" && -f "$deploy_dir/dist/src/main.js" ]]; then
+            entrypoint="dist/src/main.js"
+          fi
+
+          if [[ ! -f "$deploy_dir/$entrypoint" ]]; then
+            echo "main entrypoint not found in dist"
+            ls -la "$deploy_dir/dist" || true
+            exit 1
+          fi
+
           pm2 delete "$API_PM2_APP_NAME" >/dev/null 2>&1 || true
 
           pushd "$deploy_dir" >/dev/null
-          PORT="$api_port" pm2 start dist/main.js --name "$API_PM2_APP_NAME" --time --output "$log_file" --error "$log_file"
+          PORT="$api_port" pm2 start "$entrypoint" --name "$API_PM2_APP_NAME" --time --output "$log_file" --error "$log_file"
           pm2 save
           popd >/dev/null
 
