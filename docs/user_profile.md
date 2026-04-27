@@ -75,3 +75,26 @@ After update:
 
 - Email must be unique
 - Username must be unique
+
+---
+
+## 8) Color Preferences
+
+Users can persist interface color preferences in `preferences.colors`.
+
+Supported color fields:
+
+- `backgroundPrimary`
+- `backgroundSecondary`
+- `textPrimary`
+- `textSecondary`
+- `borderColor`
+- `inputBackground`
+- `headerBackground`
+- `headerText`
+- `primaryButtonBackground`
+- `primaryButtonText`
+- `secondaryButtonBackground`
+- `secondaryButtonText`
+
+All color fields are optional and must be valid hexadecimal colors when provided.

@@ -7,7 +7,7 @@ import { SessionsService } from '../sessions/sessions.service';
 import { UpdateColorsDto } from './dto/update-colors.dto';
 import { UpdateLanguageDto } from './dto/update-language.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { User, type UserDocument } from './schemas/user.schema';
+import { User, UserColors, type UserDocument } from './schemas/user.schema';
 
 @Injectable()
 export class UsersService {
@@ -81,14 +81,44 @@ export class UsersService {
   async updateColors(userId: string, dto: UpdateColorsDto): Promise<Record<string, unknown>> {
     const user = await this.findById(userId);
 
+    const prev = user.preferences?.colors;
+    const prevPlain =
+      prev && typeof prev === 'object' && 'toObject' in prev && typeof (prev as { toObject: () => unknown }).toObject === 'function'
+        ? (prev as { toObject: () => Record<string, string | undefined> }).toObject()
+        : prev && typeof prev === 'object'
+          ? { ...(prev as Record<string, string | undefined>) }
+          : {};
+
+    const merged: Record<string, string | undefined> = { ...prevPlain };
+    const assignIfDefined = (key: keyof UpdateColorsDto) => {
+      const value = dto[key];
+      if (value !== undefined) {
+        merged[key] = value;
+      }
+    };
+    assignIfDefined('backgroundPrimary');
+    assignIfDefined('backgroundSecondary');
+    assignIfDefined('textPrimary');
+    assignIfDefined('textSecondary');
+    assignIfDefined('borderColor');
+    assignIfDefined('inputBackground');
+    assignIfDefined('headerBackground');
+    assignIfDefined('headerText');
+    assignIfDefined('primaryButtonBackground');
+    assignIfDefined('primaryButtonText');
+    assignIfDefined('secondaryButtonBackground');
+    assignIfDefined('secondaryButtonText');
+    assignIfDefined('languageSwitcherBackground');
+    assignIfDefined('languageSwitcherText');
+    assignIfDefined('languageSwitcherBorder');
+
+    const colorsPayload = Object.fromEntries(
+      Object.entries(merged).filter(([, v]) => v !== undefined),
+    ) as UserColors;
+
     user.preferences = {
       ...user.preferences,
-      colors: {
-        backgroundPrimary: dto.backgroundPrimary,
-        backgroundSecondary: dto.backgroundSecondary,
-        textPrimary: dto.textPrimary,
-        textSecondary: dto.textSecondary,
-      },
+      colors: colorsPayload,
     };
 
     await user.save();

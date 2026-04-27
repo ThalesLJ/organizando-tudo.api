@@ -44,6 +44,39 @@ export class UserColors {
 
   @Prop()
   textSecondary?: string;
+
+  @Prop()
+  borderColor?: string;
+
+  @Prop()
+  inputBackground?: string;
+
+  @Prop()
+  headerBackground?: string;
+
+  @Prop()
+  headerText?: string;
+
+  @Prop()
+  primaryButtonBackground?: string;
+
+  @Prop()
+  primaryButtonText?: string;
+
+  @Prop()
+  secondaryButtonBackground?: string;
+
+  @Prop()
+  secondaryButtonText?: string;
+
+  @Prop()
+  languageSwitcherBackground?: string;
+
+  @Prop()
+  languageSwitcherText?: string;
+
+  @Prop()
+  languageSwitcherBorder?: string;
 }
 
 const UserColorsSchema = SchemaFactory.createForClass(UserColors);
