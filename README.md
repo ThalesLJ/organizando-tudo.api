@@ -1,214 +1,182 @@
 # Organizando Tudo API
 
-Organizando Tudo API is the NestJS backend for Organizando Tudo. It is responsible for authentication, authorization, session validation, user data, encrypted notes, financial records, transactional emails, MongoDB persistence, and the public API consumed by the Next.js Backend for Frontend.
-
-The project was developed using Specification-Driven Development (SDD). More information about the adopted SDD workflow and Microsoft Spec Kit usage is available in [`AGENTS.md`](./AGENTS.md).
-
-## Features
-
-- Authentication flow with account creation, login, logout, password recovery, JWT generation, and single active session control.
-- Bearer JWT authentication backed by persisted session validation on every protected request.
-- Password, recovery code, and session token hashing before persistence.
-- User profile endpoints for authenticated account data, username/email updates, language preferences, and interface color preferences.
-- Private notes with encrypted `title` and `content` fields at rest.
-- Public note viewing for notes explicitly marked as public.
-- Financial management for budgets and expenses with create, update, list, get, and delete operations.
-- Centralized DTO validation with strict whitelisting and rejection of unknown request properties.
-- Standard response envelope and centralized HTTP exception formatting.
-- SMTP-based transactional emails for password recovery and account update notifications.
-- MongoDB-backed secret loading for SMTP credentials.
-- Health check endpoint for deployment validation.
-- Automated deployment workflow using GitHub Actions, a self-hosted Linux runner, and PM2.
+Organizando Tudo API is the high-performance NestJS backend for the Organizando Tudo ecosystem. It serves as the authoritative source of truth for business logic, user authentication, persisted session validation, encrypted note storage, financial management (budgets and expenses), transactional email notifications, and MongoDB persistence.
 
 ## Tech Stack
 
-- [NestJS](https://nestjs.com/) 11
-- [TypeScript](https://www.typescriptlang.org/)
-- [MongoDB](https://www.mongodb.com/) with [Mongoose](https://mongoosejs.com/)
-- [Passport](https://www.passportjs.org/) and `passport-jwt`
-- [@nestjs/jwt](https://docs.nestjs.com/security/authentication)
-- [class-validator](https://github.com/typestack/class-validator) and [class-transformer](https://github.com/typestack/class-transformer)
-- [bcryptjs](https://github.com/dcodeIO/bcrypt.js) for hashing
-- Node.js `crypto` for note encryption
-- [Nodemailer](https://nodemailer.com/) for SMTP email delivery
-- ESLint and Prettier
+- **Framework**: [NestJS](https://nestjs.com/) 11
+- **Language**: [TypeScript](https://www.typescriptlang.org/) (Strict Mode)
+- **Database & ODM**: [MongoDB](https://www.mongodb.com/) with [Mongoose](https://mongoosejs.com/)
+- **Authentication**: [Passport](https://www.passportjs.org/) and `@nestjs/jwt`
+- **Validation**: [class-validator](https://github.com/typestack/class-validator) and [class-transformer](https://github.com/typestack/class-transformer)
+- **Security & Cryptography**: [bcryptjs](https://github.com/dcodeIO/bcrypt.js) for hashing, Node.js `crypto` for AES-256-GCM note encryption at rest
+- **Email Delivery**: [Nodemailer](https://nodemailer.com/) with MongoDB-persisted secret resolution
+- **Code Quality**: ESLint and Prettier
 
 ## Architecture
 
-This application is the backend source of truth for business rules, validation, authentication, session control, infrastructure integrations, and data persistence.
-
-Expected data flow:
+This application follows a **Modular Layered Architecture** with strict domain boundaries. Every feature module is self-contained with its own controllers, services, DTOs, and Mongoose schemas, while cross-cutting concerns reside in centralized common and infrastructure packages.
 
 ```text
-HTTP request -> Controller -> DTO validation -> Guard/decorator -> Service -> Mongoose/Infrastructure -> Response mapping -> Global response envelope
+HTTP Request -> Controller -> DTO Validation -> Guard / Decorator -> Service -> Mongoose Schema -> Response Interceptor -> Standard Envelope
 ```
 
-The API layer is responsible for:
+### Architectural Highlights
 
-- Validating request payloads with DTOs and global validation pipes.
-- Signing JWT tokens and validating Bearer tokens.
-- Validating persisted sessions in MongoDB.
-- Enforcing ownership checks for user-owned data.
-- Hashing passwords, recovery codes, and session tokens.
-- Encrypting note content before persistence.
-- Loading SMTP credentials from MongoDB through an isolated secrets service.
-- Returning normalized responses and safe error payloads.
-
-Global runtime behavior is configured in `src/main.ts`:
-
-- API prefix: `/api`
-- Global `ValidationPipe` with `transform`, `whitelist`, and `forbidNonWhitelisted`
-- Global HTTP exception filter
-- Global response interceptor
+- **Standard Response Envelope**: All API responses are uniformly wrapped by a global response interceptor (`{ success: true, data: ... }`) and errors are handled by a global exception filter (`{ success: false, error: { code, message }, timestamp, path }`).
+- **Encrypted Notes at Rest**: Private notes are automatically encrypted using authenticated cryptographic ciphers before persistence to MongoDB and decrypted only when requested by authorized users.
+- **Session-Validated Authentication**: Protected endpoints enforce both JWT token integrity and active persisted session validation in MongoDB, enabling immediate single-session revocation.
+- **Isolated Secret Management**: Sensitive credentials (such as SMTP credentials) are stored securely in MongoDB and resolved at runtime via an isolated secrets service rather than static environment files.
 
 ## Project Structure
 
-TODO: This section will be completed when the project structure reaches its final level.
+```text
+organizando-tudo.api/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml              # CI/CD deployment workflow for self-hosted Linux runner
+├── .specify/                       # Spec Kit memory, configurations, and templates
+│   └── memory/
+│       └── constitution.md         # Project constitution and architectural principles
+├── specs/                          # Specification-Driven Development feature specs
+├── src/
+│   ├── common/                     # Cross-cutting decorators, filters, guards, and interceptors
+│   │   ├── decorators/             # Custom NestJS parameter decorators (e.g., CurrentUser)
+│   │   ├── filters/                # Global HTTP exception filters
+│   │   ├── guards/                 # JWT and session authentication guards
+│   │   ├── interceptors/           # Global response envelope interceptors
+│   │   └── interfaces/             # Shared TypeScript interfaces and contracts
+│   ├── config/                     # Configuration schemas and environment validation
+│   │   └── env.validation.ts       # Environment variable bootstrap validation
+│   ├── infrastructure/             # Infrastructure services and external integrations
+│   │   ├── crypto/                 # Cryptographic helpers (AES-256-GCM note encryption)
+│   │   ├── email/                  # Nodemailer SMTP transactional email service
+│   │   └── secrets/                # MongoDB-backed secret loader for SMTP credentials
+│   ├── modules/                    # Domain feature modules
+│   │   ├── auth/                   # Authentication, registration, login, and password recovery
+│   │   ├── budgets/                # Budget planning and management
+│   │   ├── expenses/               # Expense tracking and categorization
+│   │   ├── health/                 # Operational health check endpoint
+│   │   ├── notes/                  # Encrypted private notes and public note sharing
+│   │   ├── sessions/               # Persisted user session lifecycle and token hashing
+│   │   └── users/                  # User profile and UI preference persistence
+│   ├── app.module.ts               # Root NestJS application module
+│   └── main.ts                     # Application entry point, global pipes, and filters
+├── .env.example                    # Template environment variables file
+├── nest-cli.json                   # NestJS CLI configuration
+├── package.json                    # Project metadata, dependencies, and npm scripts
+├── README.md                       # Project documentation
+├── tsconfig.build.json             # TypeScript production build configuration
+└── tsconfig.json                   # TypeScript compiler configuration
+```
 
 ## Environment Variables
 
-Create a local `.env` file based on [`.env.example`](./.env.example).
+Create a local `.env` file in the project root based on [`.env.example`](./.env.example):
 
 ```env
 PORT=3000
-MONGO_URI=""
-JWT_SECRET=""
-JWT_ISSUER=""
-ENCRYPTION_KEY=""
+MONGO_URI=mongodb://localhost:27017/organizandotudo
+JWT_SECRET=your-jwt-secret-key-min-32-chars
+JWT_ISSUER=organizandotudo-api
+ENCRYPTION_KEY=your-32-byte-hex-encryption-key
 ```
 
-Variables:
+### Variable Descriptions
 
-- `PORT`: port used by the API when running locally or under PM2.
+- `PORT`: Port used by the NestJS API during local execution and under PM2 process management.
 - `MONGO_URI`: MongoDB connection string.
-- `JWT_SECRET`: secret used to sign and validate JWT tokens.
-- `JWT_ISSUER`: issuer required when signing and validating JWT tokens.
-- `ENCRYPTION_KEY`: secret used to data encryption.
+- `JWT_SECRET`: Secret key used to sign and verify JWT authentication tokens.
+- `JWT_ISSUER`: Issuer claim validated on incoming JWT tokens.
+- `ENCRYPTION_KEY`: 256-bit cryptographic key used for encrypting note titles and content at rest.
 
-The application validates required environment variables during bootstrap and fails immediately when any required value is missing or invalid.
-
-SMTP credentials are not read from `.env`. They are loaded from MongoDB by the secrets infrastructure and must include:
-
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USER`
-- `SMTP_PASS`
-- `SMTP_FROM`
+> [!NOTE]
+> SMTP credentials (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) are not read from `.env`. They are securely loaded from MongoDB by the secrets infrastructure module.
 
 ## Getting Started
 
-Install dependencies:
+### Prerequisites
 
-```bash
-npm install
-```
+- [Node.js](https://nodejs.org/) (version 20 LTS or 22 LTS recommended)
+- [MongoDB](https://www.mongodb.com/) (version 6.0+)
+- `npm` (version 10+)
 
-Run the development server:
+### Installation
 
-```bash
-npm run start:dev
-```
+1. Clone the repository and navigate to the project directory:
+   ```bash
+   cd organizando-tudo.api
+   ```
 
-The API listens on the port defined by `PORT`. With the default example value, the health endpoint is available at [`http://localhost:3000/api/health`](http://localhost:3000/api/health).
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Configure your local environment:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Start the development server:
+   ```bash
+   npm run start:dev
+   ```
+
+5. The API will listen on the port defined by `PORT`. The health endpoint will be available at [`http://localhost:3000/api/health`](http://localhost:3000/api/health).
 
 ## Available Scripts
 
 ```bash
+# Starts the NestJS application
 npm run start
-```
 
-Starts the NestJS application.
-
-```bash
+# Starts the application in development watch mode
 npm run start:dev
-```
 
-Starts the NestJS application in watch mode.
-
-```bash
+# Starts the application in debug watch mode
 npm run start:debug
-```
 
-Starts the NestJS application in debug watch mode.
-
-```bash
+# Compiles the production build into dist/
 npm run build
-```
 
-Builds the production application into `dist/`.
-
-```bash
+# Starts the compiled production application
 npm run start:prod
-```
 
-Starts the compiled production application from `dist/main`.
-
-```bash
+# Runs ESLint across the codebase
 npm run lint
-```
 
-Runs ESLint for `src` and `test`.
-
-```bash
+# Formats source files with Prettier
 npm run format
 ```
 
-Formats TypeScript files in `src` and `test` with Prettier.
-
-The repository also contains Jest scripts in `package.json`, but the project does not currently define an automated test suite as a delivery gate.
-
 ## Deployment
 
-The repository includes a GitHub Actions workflow for deploying one active API version at a time. The workflow is defined in [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml).
+The project includes an automated deployment pipeline powered by GitHub Actions defined in [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml).
 
-Deployment runs automatically on pushes to `master` and can also be started manually through `workflow_dispatch`. The first job, `deploy-api`, runs on the configured self-hosted Linux runner using Bash. It validates the required repository variables, checks that `pm2` is available on the runner host, prepares the deployment directories, synchronizes the repository into the active `current` directory, copies the configured environment file to `.env`, installs dependencies, builds the NestJS application, detects the compiled entrypoint, and restarts the PM2 process.
+- **Target Architecture**: Self-hosted Linux runner with PM2 process supervisor.
+- **Workflow Triggers**: Automatic on push to `master`, or manual via `workflow_dispatch`.
+- **Deployment Flow**:
+  1. Synchronizes project source to active release directory (excluding build artifacts and cache).
+  2. Injects production environment configuration from `API_ENV_FILE`.
+  3. Installs clean production dependencies (`npm install`) and compiles the TypeScript project (`npm run build`).
+  4. Restarts the PM2 process with zero-downtime reload under `API_PM2_APP_NAME`.
+  5. Runs post-deployment external health check against `https://organizandotudo.api.thaleslj.com/api/health`.
 
-The deployment directory is always treated as a single active version:
+## SDD (Microsoft Speckit)
 
-```text
-API_DEPLOY_BASE_DIR/
-├── current/
-└── logs/
-```
+This project is developed using **Specification-Driven Development (SDD)** with Microsoft Spec Kit. All features, architecture modifications, and bug fixes must originate from structured specifications before code changes are applied.
 
-During synchronization, the workflow excludes `.git`, `.github`, `node_modules`, and `dist`. This keeps deployment output focused on the runtime application while allowing the runner to recreate dependencies and build artifacts on the server.
+- **Agent Guidance & Setup**: [`AGENTS.md`](./AGENTS.md)
+- **Project Constitution**: [`.specify/memory/constitution.md`](./.specify/memory/constitution.md)
+- **Feature Specifications**: [`specs/`](./specs/)
 
-After copying the environment file, the workflow reads `PORT` from `.env`. That port is then used to start the compiled API with PM2:
-
-```bash
-PORT="$api_port" pm2 start "$entrypoint" --name "$API_PM2_APP_NAME" --time --output "$log_file" --error "$log_file"
-```
-
-The workflow checks for `dist/main.js` first and falls back to `dist/src/main.js` when necessary. Before starting the new process, the workflow deletes any existing PM2 process with the same application name. It then runs `pm2 save` and verifies that PM2 can describe the process. Logs are written to `API_DEPLOY_BASE_DIR/logs/<API_PM2_APP_NAME>.log`.
-
-After the self-hosted deployment job completes, a second GitHub-hosted job named `validate-api-public-health` runs on `ubuntu-latest`. This job calls the public health endpoint from outside the VPS and fails the workflow if the response does not include `"status":"ok"`.
-
-Validated public health endpoint:
+Main Spec Kit commands:
 
 ```text
-https://organizandotudo.api.thaleslj.com/api/health
+/speckit.constitution - Establish or update project principles
+/speckit.specify      - Create a baseline feature specification
+/speckit.plan         - Create technical implementation plan
+/speckit.tasks        - Generate actionable task breakdown
+/speckit.implement    - Execute implementation tasks
 ```
-
-Expected health response shape:
-
-```json
-{
-  "status": "ok",
-  "database": "up",
-  "timestamp": "2026-01-01T00:00:00.000Z"
-}
-```
-
-Required repository variables:
-
-- `API_DEPLOY_BASE_DIR`
-- `API_ENV_FILE`
-- `API_PM2_APP_NAME`
-
-Recommended PM2 application name:
-
-```text
-API_PM2_APP_NAME=organizandotudo-api
-```
-
-The VPS runner must have Node.js 22, `pm2`, `rsync`, `curl`, and `bash` available. The external environment file referenced by `API_ENV_FILE` must exist and include `PORT`. Apache, or the active reverse proxy, should route public traffic to that same port.
